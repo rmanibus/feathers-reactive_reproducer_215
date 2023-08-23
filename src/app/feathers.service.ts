@@ -1,76 +1,11 @@
 import { Injectable } from '@angular/core';
-import { Application, feathers, Params, Service } from '@feathersjs/feathers';
-import { rx } from 'feathers-reactive';
+import { feathers } from '@feathersjs/feathers';
 import feathersSocketIOClient from '@feathersjs/socketio-client';
-import io from 'socket.io-client';
-
-import { CoverBoxService } from './cover-box.service';
+import io from 'socket.io-client'
+import { rx } from 'feathers-reactive';
 
 import auth, { AuthenticationClient } from '@feathersjs/authentication-client';
-import {
-  AuthenticationRequest,
-  AuthenticationResult,
-} from '@feathersjs/authentication/lib';
-
-class RefreshableAuthenticationClient extends AuthenticationClient {
-  refresh?: Promise<AuthenticationResult> = undefined;
-
-  reAuthenticate(
-    force = false,
-    strategy?: string
-  ): Promise<AuthenticationResult> {
-    if (this.isExpired()) {
-      if (!this.refresh) {
-        this.refresh = this.authenticate({
-          strategy: 'refreshToken',
-          refreshToken: localStorage.getItem('refresh-token'),
-        }).then((result) => {
-          this.refresh = undefined;
-          return result;
-        });
-      }
-      return this.refresh;
-    }
-    return super.reAuthenticate(force, strategy);
-  }
-
-  isExpired(): boolean {
-    const exp = localStorage.getItem('exp');
-    if (!exp) {
-      return false;
-    }
-    return Date.now() >= (parseInt(exp) - 1) * 1000;
-  }
-
-  authenticate(
-    authentication?: AuthenticationRequest,
-    params?: Params
-  ): Promise<AuthenticationResult> {
-    return super
-      .authenticate(
-        authentication && {
-          ...authentication,
-          deviceId: localStorage.getItem('device-id'),
-        },
-        params
-      )
-      .then(({ refreshToken, deviceId, authentication, ...rest }) => {
-        const exp = authentication.payload.exp;
-        exp && localStorage.setItem('exp', exp);
-        refreshToken && localStorage.setItem('refresh-token', refreshToken);
-        deviceId && localStorage.setItem('device-id', deviceId);
-        return { authentication, ...rest };
-      });
-  }
-
-  removeAccessToken() {
-    return super.removeAccessToken().then((value: any) => {
-      localStorage.removeItem('exp');
-      localStorage.removeItem('refresh-token');
-      return value;
-    });
-  }
-}
+import { AuthenticationResult } from '@feathersjs/authentication/lib';
 
 /**
  * Simple wrapper for feathers
@@ -80,9 +15,7 @@ export class Feathers {
   private _feathers = feathers();
   private _socket = io();
 
-  constructor(private coverBox: CoverBoxService) {
-    this.coverBox.show('Connecting ...');
-
+  constructor() {
     this._feathers
       .configure(
         feathersSocketIOClient(this._socket, {
@@ -91,7 +24,7 @@ export class Feathers {
       )
       .configure(
         auth({
-          Authentication: RefreshableAuthenticationClient,
+          Authentication: AuthenticationClient,
           storage: window.localStorage,
         })
       )
@@ -100,21 +33,6 @@ export class Feathers {
           idField: '_id',
         })
       );
-
-    this._socket.on('connect', () => {
-      console.log('connected');
-      this.coverBox.hide();
-      document.title = 'TTKweb';
-    });
-
-    this._socket.on('reconnecting', (delay: any, attempt: any) => {
-      this.coverBox.show('Disconnected ... trying to reconnect.');
-    });
-
-    this._socket.on('reconnect', () => {
-      console.log('reconnected');
-      this.coverBox.hide();
-    });
   }
 
   public addSocketListener(event: string, action: () => void) {
